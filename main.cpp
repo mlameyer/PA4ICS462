@@ -138,17 +138,9 @@ void hexDump (char *desc, void *addr, int len)
     printf ("  %s\n", buff);
 }
 
-
-void dump_mbr(char *name, int sectorNumber)
+void printSector(unsigned char *line)
 {
-    char buffer[512];
-    bios_read(sectorNumber, buffer);
-    hexDump(name, buffer, 512);
     int spaceIndicator;
-    
-    unsigned char *line = (unsigned char*)buffer;
-    
-    printf("Start of Master Boot Record... \n");
     
     for(int i = 0; i < 512; i++)
     {
@@ -169,7 +161,19 @@ void dump_mbr(char *name, int sectorNumber)
         }
     }
     
-    printf("\nEnd of Master Boot Record. \n\n");
+    printf ("\n");
+}
+
+void dump_mbr(char *name, int sectorNumber)
+{
+    char buffer[512];
+    bios_read(sectorNumber, buffer);
+    //hexDump(name, buffer, 512);
+    printf ("%s:\n", name);
+    
+    printSector((unsigned char*)buffer);
+    
+    printf("End of %s. \n\n", name);
 }
 
 void printDirectoryEntry(struct directoryEntry *de)
@@ -185,7 +189,9 @@ void dir(char *name, int sectorNumber)
     struct directoryEntry *de;
     bios_read(sectorNumber, buffer);
     int index = 0;
-    hexDump(name, buffer, 512);
+    printf ("Contents of %s:\n", name);
+    printSector((unsigned char*)buffer);
+    //hexDump(name, buffer, 512);
     while(1)
     {
         de = (struct directoryEntry * ) &buffer[index];
@@ -199,15 +205,14 @@ void dir(char *name, int sectorNumber)
         
         if(de->attribute == '\x20')
         {
-            printf("%s\\%s \n", name, de->filename);
+            printf("%s\\%s Size: %i\n", name, de->filename, de->filesize);
         }
 
         if(de->attribute == '\x10')
         {
             int newDir;
-            printf("a directory \n");
             newDir = calculateFileSector(de->startingCluster, bb);
-            printf("New directory %s Sector %d \n", de->filename, newDir);
+            printf("Contents of Directory %s, Starting Sector number: %d\n", de->filename, newDir);
             dir(de->filename, newDir);
         }
 
@@ -218,12 +223,13 @@ void dir(char *name, int sectorNumber)
         
         index = index + 32;
     }
+    
+    printf ("End of %s:\n\n", name);
 }
 
-void cat(char * path)
+void cat(char *path)
 {
-  /* you do this */
-  /* path is the path to the file on the file system */
+    printSector((unsigned char*)path);
 }
 
 int main(int argc, char * argv[] )
@@ -247,7 +253,7 @@ int main(int argc, char * argv[] )
       bios_read(i + 1, (char*)&fat[i * 512]);
   }
   
-  hexDump("fat", fat, 512);
+  //hexDump("fat", fat, 512);
   /*
   printf("Bytes per sector %x %d \n", bb->bytesPerSector, bb->bytesPerSector);
   printf("Sectors Per Cluster %x \n", bb->sectorsPerCluster);
@@ -258,7 +264,9 @@ int main(int argc, char * argv[] )
   for(int i = 0; i < 4; i++)
   {
       bios_read(fileSector + i, fileBuffer);
-      hexDump("file", fileBuffer, 512);
+      //hexDump("file", fileBuffer, 512);
+      printf("File Sector %i: \n", fileSector + i);
+      cat(fileBuffer);
   }
   
   //nextCluster = (short *)&fat[4*2];
@@ -268,7 +276,9 @@ int main(int argc, char * argv[] )
   for(int i = 0; i < 4; i++)
   {
       bios_read(fileSector + i, fileBuffer);
-      hexDump("file", fileBuffer, 512);
+      //hexDump("file", fileBuffer, 512);
+      printf("File Sector %i: \n", fileSector + i);
+      cat(fileBuffer);
   }
   
   nextCluster = fat[nextCluster];
