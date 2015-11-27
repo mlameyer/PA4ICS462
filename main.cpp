@@ -6,6 +6,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 FILE *file_ptr;
 
@@ -40,7 +41,8 @@ void bios_init(char * name);
 void bois_close(void);
 void bios_read(int number, char * sector);
 void bois_write(int number, char * sector);
-void hexDump (char *desc, void *addr, int len) ;
+void hexDump (char *desc, void *addr, int len);
+void dumpfilefromcluster(int clusterNumber, int size);
 
 struct bootblock *bb;
 int ClusterSize;
@@ -205,7 +207,7 @@ void dir(char *name, int sectorNumber)
         
         if(de->attribute == '\x20')
         {
-            printf("%s\\%s Size: %i\n", name, de->filename, de->filesize);
+            printf("%s\\%s Cluster: %i, Size: %i\n", name, de->filename, de->startingCluster, de ->filesize);
         }
 
         if(de->attribute == '\x10')
@@ -227,9 +229,88 @@ void dir(char *name, int sectorNumber)
     printf ("End of %s:\n\n", name);
 }
 
+void catdir(char *name, int sectorNumber, char * folder, char * filename)
+{
+    char buffer[512];
+    struct directoryEntry *de;
+    bios_read(sectorNumber, buffer);
+    int index = 0;
+    printf ("Contents of %s:\n", name);
+    printSector((unsigned char*)buffer);
+    //hexDump(name, buffer, 512);
+    while(1)
+    {
+        de = (struct directoryEntry * ) &buffer[index];
+        if(de->filename[0] == '.')
+        {
+            index = index + 32;
+            continue;
+        }
+
+        if(de->attribute == '\x20')
+        {
+            int i, j;
+            
+            i = strncmp(de->filename, filename, strlen(filename));
+            j = strncmp(name, folder, strlen(folder));
+            //printf("%s\\%s Cluster: %i, Size: %i\n", name, de->filename, de->startingCluster, de ->filesize);
+            if((i == 0) && (j == 0))
+            {
+                dumpfilefromcluster(de->startingCluster, de->filesize);
+            }
+        }
+
+        if(de->attribute == '\x10')
+        {
+            int newDir;
+            newDir = calculateFileSector(de->startingCluster, bb);
+            printf("Contents of Directory %s, Starting Sector number: %d\n", de->filename, newDir);
+            catdir(de->filename, newDir, folder, filename);
+        }
+
+        if(de->attribute == '\x00')
+        {
+            break;
+        }
+        
+        index = index + 32;
+    }
+    
+    printf ("End of %s:\n\n", name);
+}
+
 void cat(char *path)
 {
-    printSector((unsigned char*)path);
+    //printSector((unsigned char*)path);
+}
+
+void dumpfilefromcluster(int clusterNumber, int size)
+{
+    int fileSector = 0;
+    char filebuffer[512];
+    int numSectors = size / 512;
+    int i = 0;
+    int nextCluster;
+    nextCluster = clusterNumber;
+    while(1)
+    {
+        fileSector = calculateFileSector(nextCluster, bb);
+  
+        for(i = 0; i < 4; i++)
+        {
+            bios_read(fileSector + i, filebuffer);
+            hexDump("file", filebuffer, 512);
+            //printf("File Sector %i: \n", fileSector + i);
+            //cat(fileBuffer);
+            numSectors--;
+            if(numSectors < 0) 
+                break;
+        }
+        if(numSectors < 0) 
+            break;
+        nextCluster = fat[nextCluster];
+    }
+    
 }
 
 int main(int argc, char * argv[] )
@@ -250,17 +331,20 @@ int main(int argc, char * argv[] )
 
   for(int i = 0; i < bb->sectorsPerFat; i++)
   {
-      bios_read(i + 1, (char*)&fat[i * 512]);
+      bios_read(i + 1, (char*)&fat[i * 256]);
   }
   
-  //hexDump("fat", fat, 512);
+  //hexDump("fat", fat, 1024);
   /*
   printf("Bytes per sector %x %d \n", bb->bytesPerSector, bb->bytesPerSector);
   printf("Sectors Per Cluster %x \n", bb->sectorsPerCluster);
   */ 
-  dir("Root", RootDirectorySectorNum);
-  fileSector = calculateFileSector(4, bb);
-  
+  //dir("Root", RootDirectorySectorNum);
+  //fileSector = calculateFileSector(4, bb);
+  catdir("root", RootDirectorySectorNum, "FOLDER1","FILE1");
+  //dumpfilefromcluster(3,298142);
+  return 0;
+/*
   for(int i = 0; i < 4; i++)
   {
       bios_read(fileSector + i, fileBuffer);
@@ -283,4 +367,5 @@ int main(int argc, char * argv[] )
   
   nextCluster = fat[nextCluster];
   fileSector = calculateFileSector(nextCluster, bb);
+ */ 
 }
